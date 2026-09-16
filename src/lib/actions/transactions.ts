@@ -47,18 +47,43 @@ export async function createTransaction(params: CreateTransactionParams): Promis
   const supabase = await createClient();
 
   // Get current user
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  console.log('[createTransaction] auth user:', user?.id, 'authError:', authError?.message);
   if (!user) {
-    return { success: false, error: 'Tidak terautentikasi.' };
+    return { success: false, error: 'Tidak terautentikasi. Silakan login ulang.' };
+  }
+
+  // Auto-create profile if missing
+  const { data: existingProfile } = await supabase
+    .from('profiles')
+    .select('id')
+    .eq('id', user.id)
+    .single();
+
+  if (!existingProfile) {
+    console.log('[createTransaction] profile missing, creating for user:', user.id);
+    const { error: profileError } = await supabase
+      .from('profiles')
+      .insert({
+        id: user.id,
+        full_name: user.email?.split('@')[0] || 'User',
+        email: user.email || '',
+        role: 'ADMIN',
+        active: true,
+      });
+    if (profileError) {
+      console.error('[createTransaction] profile create error:', profileError);
+    }
   }
 
   // Validate technician exists and is active
-  const { data: technician } = await supabase
+  const { data: technician, error: techError } = await supabase
     .from('technicians')
     .select('id, name, active')
     .eq('id', params.technician_id)
-    .single();
+    .maybeSingle();
 
+  console.log('[createTransaction] technician:', technician, 'techError:', techError?.message);
   if (!technician || !technician.active) {
     return { success: false, error: 'Teknisi tidak ditemukan atau tidak aktif.' };
   }
