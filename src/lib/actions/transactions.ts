@@ -21,21 +21,20 @@ interface CreateTransactionResult {
   error?: string;
 }
 
-async function generateTransactionNumber(supabase: ReturnType<typeof createClient> extends Promise<infer T> ? T : never, dateStr: string): Promise<string> {
+async function generateTransactionNumber(supabase: any, dateStr: string): Promise<string> {
   const prefix = `ALT-${dateStr}-`;
   
-  // Get the last transaction number for today
-  const { data: lastTx } = await supabase
+  const { data: lastTx, error } = await supabase
     .from('transactions')
     .select('transaction_number')
     .like('transaction_number', `${prefix}%`)
     .order('transaction_number', { ascending: false })
     .limit(1)
-    .single();
+    .maybeSingle();
 
-  if (lastTx) {
-    // Extract the sequence number and increment
-    const lastSeq = parseInt(lastTx.transaction_number.split('-').pop() || '0', 10);
+  if (lastTx?.transaction_number) {
+    const parts = lastTx.transaction_number.split('-');
+    const lastSeq = parseInt(parts[parts.length - 1] || '0', 10);
     const nextSeq = String(lastSeq + 1).padStart(3, '0');
     return `${prefix}${nextSeq}`;
   }
@@ -44,6 +43,7 @@ async function generateTransactionNumber(supabase: ReturnType<typeof createClien
 }
 
 export async function createTransaction(params: CreateTransactionParams): Promise<CreateTransactionResult> {
+  try {
   const supabase = await createClient();
 
   // Get current user
@@ -58,7 +58,7 @@ export async function createTransaction(params: CreateTransactionParams): Promis
     .from('profiles')
     .select('id')
     .eq('id', user.id)
-    .single();
+    .maybeSingle();
 
   if (!existingProfile) {
     console.log('[createTransaction] profile missing, creating for user:', user.id);
@@ -125,9 +125,9 @@ export async function createTransaction(params: CreateTransactionParams): Promis
       created_by: user.id,
     })
     .select('id')
-    .single();
+    .maybeSingle();
 
-  if (txError) {
+  if (txError || !transaction) {
     console.error('Transaction creation error:', txError);
     return { success: false, error: 'Gagal membuat transaksi.' };
   }
@@ -255,6 +255,10 @@ export async function createTransaction(params: CreateTransactionParams): Promis
     transaction_id: transaction.id,
     transaction_number,
   };
+  } catch (err: any) {
+    console.error('[createTransaction] UNEXPECTED ERROR:', err?.message, err);
+    return { success: false, error: `Terjadi kesalahan: ${err?.message || 'Unknown error'}` };
+  }
 }
 
 export async function cancelTransaction(transactionId: string, reason: string): Promise<{ success: boolean; error?: string }> {
