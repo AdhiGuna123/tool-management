@@ -254,8 +254,8 @@ export default function PengambilanBaruPage() {
     setSaving(true);
     const result = await createTransaction({
       technician_id: selectedTechnician.id,
-      project_id: selectedProjectId || null,
-      manual_project_name: selectedProjectId ? null : manualProjectName,
+      project_id: selectedProjectId && selectedProjectId !== '__manual__' ? selectedProjectId : null,
+      manual_project_name: selectedProjectId === '__manual__' ? manualProjectName : null,
       location: location || null,
       transaction_date: transactionDate,
       notes: notes || null,
